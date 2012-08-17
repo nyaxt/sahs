@@ -71,6 +71,39 @@ toZeroOne :: Bool -> Int
 toZeroOne True  = 1
 toZeroOne False = 0
 
+log2c :: Int -> Int
+log2c x = ceiling $ (log (fromIntegral x)) / (log 2)
+
+genNextLevel :: SA -> (PsiA, BoolAry, SA)
+genNextLevel sa =
+  let n   = arrayLen sa
+      isa = invArray sa
+      genNextLevel_ :: (Index, Int) -> ([Int], [Bool], [Int]) -> ([Int], [Bool], [Int])
+      genNextLevel_ (i, sai) (pn, bn, san) | even sai  = ((psi n sa isa i):pn, False:bn, san)
+                                           | otherwise = (pn, True:bn, (sai `div` 2):san)
+      (pnl, bnl, sanl) = foldr genNextLevel_ ([], [], []) $ AU.assocs sa
+      pn  = AU.listArray (0, (n `ceildiv` 2) - 1) pnl
+      bn  = AU.listArray (0, n - 1) bnl
+      san = AU.listArray (0, (n `div` 2) - 1) sanl
+  in (pn, bn, san)
+  
+thd3 :: (a, b, c) -> c
+thd3 (f, s, t) = t
+  
+compressGV :: SA -> [(PsiA, BoolAry, SA)]
+compressGV sa =
+  let n = arrayLen sa
+      h = log2c $ log2c n
+      genNextLevel_  = genNextLevel
+  in take (h+1) $ iterate (genNextLevel . thd3) (AU.array (0, 0) [], AU.array (0, 0) [], sa)
+  
+{-
+	  let psi0 = genPsiA0 sa
+	  putStrLn $ "P0: " ++ (show $ AU.elems $ psi0)
+	  let a1 = genA1 sa
+	  putStrLn $ "A1: " ++ (show $ AU.elems $ a1)
+ -}
+
 main :: IO ()
 -- main = getArgs >>= (print . show . genSA . head)
 main = do src <- liftM head getArgs
@@ -82,7 +115,15 @@ main = do src <- liftM head getArgs
 	  putStrLn $ "B: " ++ (show $ map toZeroOne $ AU.elems $ b)
 	  let psi = genPsiA sa
 	  putStrLn $ "P: " ++ (show $ AU.elems $ psi)
-	  let psi0 = genPsiA0 sa
+	  let (psi0, b0, a1) = genNextLevel sa
 	  putStrLn $ "P0: " ++ (show $ AU.elems $ psi0)
-	  let a1 = genA1 sa
+	  putStrLn $ "B0: " ++ (show $ map toZeroOne $ AU.elems $ b0)
 	  putStrLn $ "A1: " ++ (show $ AU.elems $ a1)
+	  let (psi1, b1, a2) = genNextLevel a1
+	  putStrLn $ "P1: " ++ (show $ AU.elems $ psi1)
+	  putStrLn $ "B1: " ++ (show $ map toZeroOne $ AU.elems $ b1)
+	  putStrLn $ "A2: " ++ (show $ AU.elems $ a2)
+	  let n = arrayLen sa
+	  let h = log2c $ log2c n
+	  putStrLn $ "h: " ++ (show h)
+	  putStrLn $ show $ compressGV sa
