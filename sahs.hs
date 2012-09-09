@@ -5,6 +5,7 @@ import Data.List( sortBy, tails )
 import Data.Tuple( swap )
 import qualified Data.Array.Unboxed as AU
 import System.Environment( getArgs )
+import Debug.Trace( trace )
 
 type Index = Int
 type IntAry = AU.UArray Int Int
@@ -36,15 +37,19 @@ invArray :: IntAry -> IntAry
 invArray a = AU.array (AU.bounds a) (map swap $ AU.assocs a)
 
 -- return length of IntAry. assumes that IntAry start w/ index 0
-arrayLen :: IntAry -> Int
+arrayLen :: (AU.IArray a e) => a Int e -> Int
 arrayLen a = 1 + (snd $ AU.bounds a)
 
 -- given function f(i) which produces value for index i, generate IntAry length n
 iterateAry :: (Index -> Int) -> Int -> IntAry
 iterateAry f n = AU.listArray (0, n-1) $ map f [0..n-1]
 
+(!<) :: (AU.IArray a e) => a Int e -> Int -> e
+(!<) a i = a AU.! (i `mod` n)
+  where n = arrayLen a
+
 psi :: Int -> SA -> IntAry -> Int -> Int
-psi n sa isa i = isa AU.! (((sa AU.! i) + 1) `mod` n)
+psi n sa isa i = isa !< ((sa AU.! i) + 1)
 
 -- generate \Psi array from SA in naive way
 genPsiA :: SA -> PsiA
@@ -93,15 +98,32 @@ thd3 (f, s, t) = t
 compressGV :: SA -> [(PsiA, BoolAry, SA)]
 compressGV sa =
   let n = arrayLen sa
-      h = log2c $ log2c n
+      h = 1 -- log2c $ log2c n
       genNextLevel_  = genNextLevel
-  in take (h+1) $ iterate (genNextLevel . thd3) (AU.array (0, 0) [], AU.array (0, 0) [], sa)
+  in reverse $ take (h+1) $ iterate (genNextLevel . thd3) (AU.array (0, 0) [], AU.array (0, 0) [], sa)
+  
+rank0 :: BoolAry -> Index -> Int
+rank0 _ (-1) = 0
+rank0 ba i | i >= (arrayLen ba) = rank0 ba $ (arrayLen ba)-1
+           | ba AU.! i = rank0 ba (i-1)
+           | otherwise = 1 + rank0 ba (i-1)
+  
+rank1 :: BoolAry -> Index -> Int
+rank1 _ (-1) = 0
+rank1 ba i | i >= (arrayLen ba) = rank1 ba $ (arrayLen ba)-1
+           | ba AU.! i = 1 + rank1 ba (i-1)
+           | otherwise = rank1 ba (i-1)
+	   
+lookupGV :: [(PsiA, BoolAry, SA)] -> Index -> Int
+lookupGV ((_, _, sa):[]) i = trace ("lookupGVL "++(show i)) $ sa !< i
+lookupGV gv@((pa, ba, sa):gvn) i | (ba !< i) = trace ("lookupGV< i="++(show i)++" 2 * "++(show (lookupGV gvn (rank1 ba i)))) $ 2 * (lookupGV gvn (rank1 ba i))
+                                 | otherwise = trace ("lookupGVo i="++(show i)++" -1 +"++(show ((lookupGV gv (pa !< (rank0 ba i))) - 1))) $ (lookupGV gv (pa !< (rank0 ba i))) - 1
   
 {-
 	  let psi0 = genPsiA0 sa
 	  putStrLn $ "P0: " ++ (show $ AU.elems $ psi0)
 	  let a1 = genA1 sa
-	  putStrLn $ "A1: " ++ (show $ AU.elems $ a1)
+	  putStrLn $ "A1: " ++ (show $ AU.elems $ a1j
  -}
 
 main :: IO ()
@@ -113,6 +135,8 @@ main = do src <- liftM head getArgs
 	  putStrLn $ "A: " ++ (show $ AU.elems $ sa)
 	  let b = genB sa
 	  putStrLn $ "B: " ++ (show $ map toZeroOne $ AU.elems $ b)
+	  putStrLn $ "B rank0: " ++ (show $ map (rank0 b) $ [0..15])
+	  putStrLn $ "B rank1: " ++ (show $ map (rank1 b) $ [0..15])
 	  let psi = genPsiA sa
 	  putStrLn $ "P: " ++ (show $ AU.elems $ psi)
 	  let (psi0, b0, a1) = genNextLevel sa
@@ -126,4 +150,5 @@ main = do src <- liftM head getArgs
 	  let n = arrayLen sa
 	  let h = log2c $ log2c n
 	  putStrLn $ "h: " ++ (show h)
-	  putStrLn $ show $ compressGV sa
+	  let gv = compressGV sa
+	  putStrLn $ "A: " ++ (show $ map (lookupGV gv) $ [0..(n-1)])
